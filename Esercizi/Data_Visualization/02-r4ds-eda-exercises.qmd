@@ -1,0 +1,122 @@
+---
+title: "R4DS EDA Exercises"
+format: html
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+library(tidyverse)
+theme_set(theme_minimal(base_size = 12))
+```
+
+## Exercise 1
+
+```{r}
+diamonds |>
+  summarise(
+    total_diamonds = n(),
+    diamonds_between_1000_and_5000 = sum(price >= 1000 & price <= 5000),
+    diamonds_removed_by_xlim = total_diamonds - diamonds_between_1000_and_5000
+  )
+```
+
+```{r}
+price_histogram <- diamonds |>
+  ggplot(aes(x = price)) +
+  geom_histogram(binwidth = 500, boundary = 0, fill = "#2f6f73", color = "white") +
+  labs(x = "Price", y = "Count")
+
+price_histogram +
+  coord_cartesian(xlim = c(1000, 5000)) +
+  labs(title = "coord_cartesian()")
+```
+
+```{r}
+price_histogram +
+  xlim(1000, 5000) +
+  labs(title = "xlim()")
+```
+
+`coord_cartesian()` zooms after plotting. `xlim()` removes data before plotting.
+
+```{r}
+diamonds |>
+  ggplot(aes(x = price)) +
+  geom_histogram(fill = "#4c5b8a", color = "white") +
+  coord_cartesian(xlim = c(1000, 5000)) +
+  labs(title = "Default bins", x = "Price", y = "Count")
+```
+
+Without `binwidth`, ggplot chooses the bins automatically.
+
+```{r}
+price_histogram +
+  coord_cartesian(xlim = c(750, 2250)) +
+  labs(title = "Partial bins")
+```
+
+`coord_cartesian()` can show partial bins because it crops the plot.
+
+## Exercise 2
+
+```{r}
+diamonds |>
+  summarise(
+    min_price = min(price),
+    q1 = quantile(price, 0.25),
+    median = median(price),
+    mean = mean(price),
+    q3 = quantile(price, 0.75),
+    max_price = max(price)
+  )
+```
+
+```{r}
+diamonds |>
+  ggplot(aes(x = price)) +
+  geom_histogram(binwidth = 500, fill = "#4c5b8a", color = "white") +
+  labs(title = "Price distribution", x = "Price", y = "Count")
+```
+
+```{r}
+diamonds |>
+  filter(price <= 3000) |>
+  ggplot(aes(x = price)) +
+  geom_histogram(binwidth = 25, fill = "#8a5a44", color = "white") +
+  labs(title = "Prices below 3000", x = "Price", y = "Count")
+```
+
+```{r}
+diamonds |>
+  distinct(price) |>
+  arrange(price) |>
+  mutate(
+    previous_price = lag(price),
+    gap = price - previous_price
+  ) |>
+  arrange(desc(gap)) |>
+  slice_head(n = 5)
+```
+
+Prices are right-skewed. The biggest gap is between 1454 and 1546.
+
+## Exercise 3
+
+```{r}
+diamonds |>
+  filter(carat %in% c(0.99, 1.00)) |>
+  count(carat, name = "number_of_diamonds")
+```
+
+```{r}
+diamonds |>
+  filter(carat >= 0.95, carat <= 1.05) |>
+  count(carat, name = "number_of_diamonds") |>
+  ggplot(aes(x = factor(carat), y = number_of_diamonds)) +
+  geom_col(fill = "#3f7d4e") +
+  labs(title = "Counts near 1 carat", x = "Carat", y = "Count")
+```
+
+There are many more 1.00 carat diamonds than 0.99 carat diamonds. The 1 carat threshold matters commercially.

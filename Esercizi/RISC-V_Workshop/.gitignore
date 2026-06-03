@@ -1,0 +1,15 @@
+
+# External modules
+modules
+
+# Build directories
+build
+obj_dir
+fails
+
+# Waveform output
+*.vcd
+
+# Clang linter config
+compile_commands.json
+.cache

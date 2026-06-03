@@ -1,6 +1,15 @@
+# Folders
 /Documenti
-BIP-RISC-V.*
-BIP-RISC-V-disk001.*
-/Esercizi/Edge Networks/build
+/Esercizi/Edge_Networks/build
+/Esercizi/Data_Visualization/01-Data_Visualization_basic_files
+/Esercizi/Data_Visualization/02-r4ds-eda-exercises_files
+/Esercizi/RISC-V_Workshop/obj_dir-*
+
+# .DS_Store
 .DS_Store
 /Esercizi/.DS_Store
+
+# Files
+/Esercizi/Data_Visualization/*.html
+/Esercizi/Data_Visualization/*.png
+/Esercizi/Data_Visualization/*.pdf
