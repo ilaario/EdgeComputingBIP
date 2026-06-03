@@ -56,4 +56,4 @@ TODO: Insert image
 
 ## Summarising
 
-Edge computing implies limited computing resources mostly with energy consumption limitations. RISC-V is an open architecture TODO: Complete
+Edge computing implies limited computing resources mostly with energy consumption limitations. RISC-V is an open architecture TODO: Complete 
