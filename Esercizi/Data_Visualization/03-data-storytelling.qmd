@@ -1,0 +1,277 @@
+---
+title: "Weight, Cylinders, and Fuel Economy: A Data Story from mtcars"
+author: "Dario Bonfiglio"
+format:
+  html:
+    toc: true
+    theme: cosmo
+editor: visual
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+## Objective
+
+The `mtcars` dataset contains 32 car models and several technical variables, including fuel economy, weight, cylinders, horsepower, and transmission type. This story answers one main question:
+
+**How much do vehicle weight and engine configuration affect fuel economy?**
+
+To answer it, the document uses three plot types:
+
+- a scatter plot to show the relationship between weight and fuel economy;
+- a boxplot to compare fuel economy distributions by cylinder group;
+- a bar chart to compare average horsepower across groups.
+
+## Data Preparation
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tibble)
+
+ink <- "#333333"
+muted <- "#555555"
+paper <- "white"
+grid_line <- "#E2E2DC"
+
+cyl_palette <- c(
+  "4 cylinders" = "#2A9D8F",
+  "6 cylinders" = "#E9C46A",
+  "8 cylinders" = "#E76F51"
+)
+
+theme_story <- function(base_size = 13) {
+  theme_light(base_size = base_size) +
+    theme(
+      plot.background = element_rect(fill = paper, color = NA),
+      panel.background = element_rect(fill = paper, color = NA),
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_line(color = grid_line, linewidth = 0.4),
+      plot.title = element_text(
+        size = 20,
+        face = "bold",
+        hjust = 0.5,
+        color = ink,
+        margin = margin(b = 4)
+      ),
+      plot.subtitle = element_text(
+        size = 12,
+        color = muted,
+        hjust = 0.5,
+        margin = margin(b = 10)
+      ),
+      plot.caption = element_text(
+        size = 9,
+        color = "#666666",
+        hjust = 1,
+        margin = margin(t = 10)
+      ),
+      axis.title = element_text(size = 12, face = "bold", color = ink),
+      axis.text = element_text(size = 10, color = ink),
+      legend.position = "top",
+      legend.title = element_text(size = 10, face = "bold"),
+      legend.text = element_text(size = 9),
+      legend.background = element_blank(),
+      legend.key = element_blank(),
+      plot.margin = margin(12, 14, 12, 14)
+    )
+}
+
+theme_set(theme_story())
+
+cars_data <- mtcars |>
+  rownames_to_column("model") |>
+  mutate(
+    cylinders = factor(
+      cyl,
+      levels = c(4, 6, 8),
+      labels = c("4 cylinders", "6 cylinders", "8 cylinders")
+    ),
+    transmission = factor(
+      am,
+      levels = c(0, 1),
+      labels = c("Automatic", "Manual")
+    ),
+    weight_1000_lb = wt,
+    efficiency_mpg = mpg,
+    horsepower = hp
+  )
+
+engine_summary <- cars_data |>
+  group_by(cylinders) |>
+  summarise(
+    models = n(),
+    avg_mpg = mean(efficiency_mpg),
+    avg_weight_1000_lb = mean(weight_1000_lb),
+    avg_hp = mean(horsepower),
+    .groups = "drop"
+  )
+```
+
+This table sets the baseline: models are grouped by cylinder count, so we can compare average fuel economy, weight, and horsepower.
+
+```{r}
+engine_summary |>
+  transmute(
+    `Cylinder group` = cylinders,
+    `Models` = models,
+    `Average mpg` = round(avg_mpg, 1),
+    `Average weight (1000 lbs)` = round(avg_weight_1000_lb, 2),
+    `Average horsepower (hp)` = round(avg_hp, 0)
+  ) |>
+  knitr::kable(caption = "Summary statistics by cylinder group.")
+```
+
+## 1. Weight and Fuel Economy
+
+The first chart shows the strongest relationship: lighter cars tend to get better fuel economy. Four-cylinder models are concentrated in the lighter and more efficient area of the plot.
+
+```{r}
+#| label: fig-weight-efficiency
+#| fig-width: 7.2
+#| fig-height: 5
+#| out-width: "100%"
+#| fig-cap: "Relationship between vehicle weight and fuel economy. Weight is measured in thousands of pounds; fuel economy is measured in miles per gallon."
+
+ggplot(cars_data, aes(x = wt, y = mpg)) +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ x,
+    se = TRUE,
+    color = "#2F4858",
+    fill = "#9FC5D1",
+    linewidth = 1,
+    alpha = 0.25
+  ) +
+  geom_point(
+    aes(fill = cylinders, shape = transmission),
+    size = 4,
+    stroke = 0.9,
+    color = "white",
+    alpha = 0.95
+  ) +
+  scale_fill_manual(values = cyl_palette) +
+  scale_shape_manual(values = c("Automatic" = 21, "Manual" = 24)) +
+  scale_x_continuous(breaks = seq(1.5, 5.5, 0.5)) +
+  scale_y_continuous(breaks = seq(10, 35, 5)) +
+  coord_cartesian(xlim = c(1.4, 5.6), ylim = c(9.5, 35.5)) +
+  labs(
+    title = "Fuel Efficiency vs Car Weight",
+    subtitle = "Lighter cars generally travel farther per gallon",
+    x = "Weight (1,000 lbs)",
+    y = "Miles per gallon",
+    fill = "Cylinders",
+    shape = "Transmission",
+    caption = "Source: mtcars dataset"
+  ) +
+  guides(
+    fill = guide_legend(
+      order = 1,
+      override.aes = list(shape = 21, color = "#333333", size = 4, alpha = 1)
+    ),
+    shape = guide_legend(
+      order = 2,
+      override.aes = list(fill = "#BFC7C9", color = "#333333", size = 4, alpha = 1)
+    )
+  )
+```
+
+## 2. Cylinders and Fuel Economy Distribution
+
+The second chart shifts from a numeric relationship to a group comparison. The fuel economy distribution shows that four-cylinder models reach much higher mpg values than eight-cylinder models.
+
+```{r}
+#| label: fig-mpg-by-cylinders
+#| fig-width: 7.2
+#| fig-height: 5
+#| out-width: "100%"
+#| fig-cap: "Fuel economy distribution by cylinder group. Points show the individual car models."
+
+ggplot(cars_data, aes(x = cylinders, y = efficiency_mpg, fill = cylinders)) +
+  geom_boxplot(
+    width = 0.55,
+    alpha = 0.9,
+    outlier.shape = NA,
+    color = "#333333",
+    linewidth = 0.7,
+    show.legend = FALSE
+  ) +
+  geom_jitter(
+    aes(shape = transmission, fill = cylinders),
+    width = 0.13,
+    size = 3.4,
+    stroke = 0.8,
+    alpha = 0.95,
+    color = "white"
+  ) +
+  scale_fill_manual(values = cyl_palette) +
+  scale_shape_manual(values = c("Automatic" = 21, "Manual" = 24)) +
+  scale_y_continuous(breaks = seq(10, 35, 5)) +
+  coord_cartesian(ylim = c(9.5, 35.5)) +
+  guides(
+    fill = guide_legend(
+      order = 1,
+      override.aes = list(shape = 21, color = "#333333", size = 4, alpha = 1)
+    ),
+    shape = guide_legend(
+      order = 2,
+      override.aes = list(fill = "#BFC7C9", color = "#333333", size = 4, alpha = 1)
+    )
+  ) +
+  labs(
+    title = "Fuel Economy by Cylinder Count",
+    subtitle = "Four-cylinder cars have the strongest mpg distribution",
+    x = "Number of cylinders",
+    y = "Miles per gallon",
+    fill = "Cylinders",
+    shape = "Transmission",
+    caption = "Source: mtcars dataset"
+  )
+```
+
+## 3. Average Horsepower by Group
+
+The third chart explains the tradeoff: eight-cylinder cars have much higher average horsepower, but that choice comes with higher weight and lower fuel economy.
+
+```{r}
+#| label: fig-average-horsepower
+#| fig-width: 7.2
+#| fig-height: 4.8
+#| out-width: "100%"
+#| fig-cap: "Average horsepower by cylinder group. Horsepower is measured in hp."
+
+ggplot(engine_summary, aes(x = cylinders, y = avg_hp, fill = cylinders)) +
+  geom_col(width = 0.58, color = "white", linewidth = 1) +
+  scale_fill_manual(values = cyl_palette) +
+  scale_y_continuous(
+    breaks = seq(0, 225, 50),
+    expand = expansion(mult = c(0, 0.06))
+  ) +
+  coord_cartesian(ylim = c(0, 225)) +
+  guides(
+    fill = guide_legend(
+      order = 1,
+      override.aes = list(shape = 21, color = "#333333", size = 4, alpha = 1)
+    )
+  ) +
+  labs(
+    title = "Average Horsepower by Cylinder Count",
+    subtitle = "More cylinders bring more power, with a visible efficiency tradeoff",
+    x = "Number of cylinders",
+    y = "Average horsepower",
+    fill = "Cylinders",
+    caption = "Source: mtcars dataset"
+  )
+```
+
+## Conclusion and Call to Action
+
+The three charts point to the same conclusion from different angles:
+
+- vehicle weight is strongly associated with lower fuel economy;
+- four-cylinder cars are generally lighter and more fuel-efficient;
+- eight-cylinder cars offer more horsepower, but pay a clear mpg penalty.
+
+**Call to action:** if the goal is to choose or design a fuel-efficient car, start with lighter models and fewer cylinders. Extra horsepower from an eight-cylinder engine should be justified by a real need, because in `mtcars` it comes with a clear fuel-economy cost.
