@@ -1,0 +1,585 @@
+---
+title: "Time Series"
+format: html
+execute:
+  echo: true
+  warning: false
+  message: false
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+## 5.1 Discover datasets
+
+In this exercise I explore some datasets available in R for time series
+analysis. I classify them by periodicity, object class, and number of
+observed variables.
+
+### Base R: dataset list
+
+```{r}
+all_datasets <- data(package = "datasets")
+all_datasets$results[, c("Package", "Item", "Title")]
+```
+
+```{r}
+idx <- grepl(
+  "air|temp|death|gas|stock|sun|rain|sales|passenger|co2|nile|market",
+  all_datasets$results[, "Item"],
+  ignore.case = TRUE
+)
+all_datasets$results[idx, c("Package", "Item", "Title")]
+```
+
+### Base R: datasets that look like time series
+
+```{r}
+period_from_frequency <- function(freq) {
+  if (is.na(freq)) {
+    "not a ts object"
+  } else if (freq == 1) {
+    "yearly"
+  } else if (freq == 4) {
+    "quarterly"
+  } else if (freq == 12) {
+    "monthly"
+  } else if (freq == 260) {
+    "something else: trading days"
+  } else {
+    paste0("something else: frequency ", freq)
+  }
+}
+
+describe_dataset <- function(name, package = "datasets") {
+  env <- new.env()
+  data(list = name, package = package, envir = env)
+  x <- get(name, envir = env)
+
+  columns <- if (is.null(dim(x))) 1L else ncol(x)
+
+  data.frame(
+    dataset = name,
+    object_class = paste(class(x), collapse = ", "),
+    frequency = if (is.ts(x)) frequency(x) else NA,
+    periodicity = if (is.ts(x)) period_from_frequency(frequency(x)) else "not a ts object",
+    start = if (is.ts(x)) paste(start(x), collapse = " Q/M ") else NA,
+    end = if (is.ts(x)) paste(end(x), collapse = " Q/M ") else NA,
+    variables = columns,
+    type = if (columns == 1L) "univariate" else "multivariate",
+    row.names = NULL
+  )
+}
+
+base_selected <- c(
+  "AirPassengers",
+  "JohnsonJohnson",
+  "Nile",
+  "EuStockMarkets",
+  "co2"
+)
+
+do.call(rbind, lapply(base_selected, describe_dataset))
+```
+
+Summary:
+
+| Dataset | Periodicity | Univariate or multivariate | What it measures |
+|-----------------|--------------------:|-----------------|-----------------|
+| `AirPassengers` | Monthly | Univariate | Monthly international airline passenger numbers, 1949-1960. |
+| `JohnsonJohnson` | Quarterly | Univariate | Quarterly earnings per Johnson & Johnson share. |
+| `Nile` | Yearly | Univariate | Annual flow of the River Nile. |
+| `EuStockMarkets` | Other: trading days | Multivariate | Daily closing prices of four major European stock indices. |
+| `co2` | Monthly | Univariate | Atmospheric CO2 concentration at Mauna Loa. |
+
+At least three datasets that clearly contain time series data are
+`AirPassengers`, `JohnsonJohnson`, and `Nile`. `EuStockMarkets` and
+`co2` are also valid examples.
+
+### Datasets selected from `timeSeriesDataSets`
+
+The package is not required to read this table. If the package is
+installed, the next chunk also checks the actual class with `class()`.
+
+```{r}
+time_series_datasets_selected <- data.frame(
+  package = "timeSeriesDataSets",
+  dataset = c("qgas_ts", "elecdaily_mts"),
+  documented_class = c("ts", "mts / multivariate ts"),
+  periodicity = c("quarterly", "something else: daily observations"),
+  measures = c(
+    "Australian gas production, in terajoules",
+    "Electricity demand, workday indicator, and average temperature in Victoria, Australia"
+  ),
+  variables = c(1, 3),
+  type = c("univariate", "multivariate")
+)
+
+time_series_datasets_selected
+```
+
+```{r}
+if (requireNamespace("timeSeriesDataSets", quietly = TRUE)) {
+  package_classes <- do.call(
+    rbind,
+    lapply(time_series_datasets_selected$dataset, describe_dataset,
+           package = "timeSeriesDataSets")
+  )
+  package_classes
+} else {
+  "Package timeSeriesDataSets is not installed in this environment."
+}
+```
+
+Interpretation:
+
+| Dataset | Class | Periodicity | What it measures | Type |
+|---------------|---------------|---------------|---------------|---------------|
+| `qgas_ts` | `ts` | Quarterly | Australian gas production, measured in terajoules. | Univariate |
+| `elecdaily_mts` | `mts`, a multivariate time series | Other: daily observations | Electricity demand, workday indicator, and daily average temperature in Victoria, Australia. | Multivariate |
+
+### Datasets selected from `tsibbledata`
+
+Again, the table is built so that it remains readable even if the
+package is not installed. If `tsibbledata` is installed, the chunk
+checks the class with `class()`.
+
+```{r}
+tsibbledata_selected <- data.frame(
+  package = "tsibbledata",
+  dataset = c("aus_production", "PBS"),
+  documented_class = c("tsibble / tbl_ts", "tsibble / tbl_ts"),
+  periodicity = c("quarterly", "monthly"),
+  measures = c(
+    "Selected Australian manufacturing production indicators: beer, tobacco, bricks, cement, electricity, gas",
+    "Australian Medicare prescription scripts and script cost, disaggregated by concession, payment type, and ATC codes"
+  ),
+  variables = c(6, 2),
+  type = c("multivariate", "multivariate")
+)
+
+tsibbledata_selected
+```
+
+```{r}
+if (requireNamespace("tsibbledata", quietly = TRUE)) {
+  package_classes <- do.call(
+    rbind,
+    lapply(tsibbledata_selected$dataset, describe_dataset,
+           package = "tsibbledata")
+  )
+  package_classes
+} else {
+  "Package tsibbledata is not installed in this environment."
+}
+```
+
+Interpretation:
+
+| Dataset | Class | Periodicity | What it measures | Type |
+|---------------|---------------|---------------|---------------|---------------|
+| `aus_production` | `tsibble` / `tbl_ts` | Quarterly | Australian production of beer, tobacco, bricks, cement, electricity, and gas. | Multivariate |
+| `PBS` | `tsibble` / `tbl_ts` | Monthly | Australian Medicare prescription counts and script costs. | Multivariate |
+
+## 5.2 Recognize time series objects
+
+```{r}
+series_list <- list(
+  AirPassengers = AirPassengers,
+  JohnsonJohnson = JohnsonJohnson,
+  nottem = nottem,
+  ldeaths = ldeaths,
+  EuStockMarkets = EuStockMarkets
+)
+
+lapply(series_list, class)
+lapply(series_list, start)
+lapply(series_list, end)
+lapply(series_list, frequency)
+```
+
+```{r}
+frequency_label <- function(freq) {
+  if (freq == 1) {
+    "yearly"
+  } else if (freq == 4) {
+    "quarterly"
+  } else if (freq == 12) {
+    "monthly"
+  } else if (freq == 260) {
+    "trading days"
+  } else {
+    paste("frequency", freq)
+  }
+}
+
+series_summary <- data.frame(
+  dataset = names(series_list),
+  object_class = vapply(series_list, function(x) paste(class(x), collapse = ", "), character(1)),
+  is_ts_object = vapply(series_list, inherits, logical(1), "ts"),
+  start = vapply(series_list, function(x) paste(start(x), collapse = ", "), character(1)),
+  end = vapply(series_list, function(x) paste(end(x), collapse = ", "), character(1)),
+  frequency = vapply(series_list, frequency, numeric(1)),
+  periodicity = vapply(series_list, function(x) frequency_label(frequency(x)), character(1)),
+  variables = vapply(series_list, function(x) if (is.null(dim(x))) 1L else ncol(x), integer(1)),
+  type = vapply(
+    series_list,
+    function(x) if (is.null(dim(x)) || ncol(x) == 1L) "univariate" else "multivariate",
+    character(1)
+  ),
+  row.names = NULL
+)
+
+series_summary
+```
+
+Answer:
+
+| Dataset | Stored as `ts` object? | Univariate or multivariate | Frequency |
+|---------------|---------------|---------------|---------------|
+| `AirPassengers` | Yes: class `ts` | Univariate | 12, monthly |
+| `JohnsonJohnson` | Yes: class `ts` | Univariate | 4, quarterly |
+| `nottem` | Yes: class `ts` | Univariate | 12, monthly |
+| `ldeaths` | Yes: class `ts` | Univariate | 12, monthly |
+| `EuStockMarkets` | Yes: classes `mts`, `ts`, `matrix`, `array` | Multivariate | 260, trading days |
+
+## 5.3 Play with a time series dataset
+
+I chose `AirPassengers`.
+
+```{r}
+x <- AirPassengers
+
+class(x)
+start(x)
+end(x)
+frequency(x)
+summary(x)
+plot(x, col = "steelblue", main = deparse(substitute(x)))
+```
+
+The series rises from 1949 to 1960, so it has a visible upward trend.
+Passenger numbers follow the same peaks and dips each year, which shows
+strong monthly seasonality. The seasonal swings widen as the level rises,
+and the plot does not show one isolated outlier or sudden break.
+
+## 5.4 Play with a dataset from `timeSeriesDataSets`
+
+I chose `gtemp_both_ts`.
+
+```{r}
+if (requireNamespace("timeSeriesDataSets", quietly = TRUE)) {
+  library(timeSeriesDataSets)
+
+  x <- gtemp_both_ts
+
+  class(x)
+  start(x)
+  end(x)
+  frequency(x)
+  summary(x)
+  plot(x, col = "firebrick", main = deparse(substitute(x)))
+} else {
+  message("Install 'timeSeriesDataSets' to complete this exercise.")
+}
+```
+
+`gtemp_both_ts` measures global mean land and open ocean temperature deviations
+from the long-term average, in degrees Celsius. It is univariate because it
+contains one numeric series. The plot should show annual variation around a
+rising path, with the strongest increase near the end of the series. It
+qualifies as a time series because the observations are ordered by year, stored
+as a `ts` object, and sampled with frequency 1.
+
+## 5.5 Play with a dataset from `tsibbledata`
+
+I chose `gafa_stock`.
+
+```{r}
+# Uncomment if needed:
+# install.packages(c("tsibbledata", "ggplot2"))
+
+if (requireNamespace("tsibbledata", quietly = TRUE)) {
+  library(tsibbledata)
+  library(ggplot2)
+
+  x <- gafa_stock
+
+  class(x)
+  head(x)
+
+  ggplot(x, aes(x = Date, y = Close, colour = Symbol)) +
+    geom_line() +
+    labs(
+      title = "Example tsibbledata dataset",
+      x = "Date",
+      y = "Close"
+    )
+} else {
+  message("Install 'tsibbledata' to complete this exercise.")
+}
+```
+
+The time index is `Date`, and `Symbol` separates Google, Amazon, Facebook, and
+Apple. The measured variables are `Open`, `High`, `Low`, `Close`, `Adj_Close`,
+and `Volume`; the plot uses `Close`. Amazon and Google trade at higher closing
+prices than Apple and Facebook for much of the period, and the lines move with
+sharp market swings rather than a seasonal pattern. This differs from a basic
+`ts` object because the data keep dates, stock keys, and several measured
+columns in one table, while a basic `ts` usually stores values in a regular
+numeric vector or matrix with an implicit time scale.
+
+## 5.6 Alternative representations, same same data
+
+```{r}
+values <- c(120, 135, 142, 160, 175)
+values
+
+values_ts <- ts(values, start = 2020, frequency = 1)
+values_ts
+
+class(values)
+class(values_ts)
+
+plot(values_ts,
+     type = "o",
+     pch = 16,
+     col = "darkgreen",
+     main = "Values as a Time Series",
+     xlab = "Year",
+     ylab = "Value")
+```
+
+The plain vector stores only the five numbers. `values_ts` stores the same
+numbers plus the start year, yearly frequency, and `ts` class, so R can label
+the observations as 2020 to 2024. The `ts` object is more useful for time-aware
+analysis because plots and time-series functions can use years instead of raw
+positions 1 to 5.
+
+## 5.7 Why time matters
+
+```{r}
+set.seed(123)
+
+x <- AirPassengers
+x_shuffled <- ts(
+  sample(as.numeric(x)),
+  start = start(x),
+  frequency = frequency(x)
+)
+
+par(mfrow = c(1, 2))
+plot(x, col = "steelblue", main = "Original series")
+plot(x_shuffled, col = "tomato", main = "Shuffled series")
+par(mfrow = c(1, 1))
+```
+
+```{r}
+par(mfrow = c(1, 2))
+acf(x, main = "ACF: original")
+acf(x_shuffled, main = "ACF: shuffled")
+par(mfrow = c(1, 1))
+```
+
+Yes, the two series contain the same passenger counts. They look different
+because shuffling assigns those counts to different months, so the upward trend
+and yearly peaks no longer line up. The original ACF shows strong dependence
+across nearby months and seasonal lags; the shuffled ACF drops close to random
+noise because the order has been broken. This shows that temporal order carries
+trend, seasonality, and autocorrelation, not just the values themselves.
+
+## 5.8 A simple moving average
+
+I chose `AirPassengers`.
+
+```{r}
+x <- AirPassengers
+
+x_ma <- stats::filter(x, rep(1/12, 12), sides = 2)
+
+plot(x,
+     main = "Series with 12-period moving average",
+     xlab = "Time",
+     ylab = "Value",
+     col = "gray40")
+lines(x_ma, col = "red", lwd = 2)
+```
+
+The 12-month moving average makes the long-run rise in passenger numbers easier
+to see. It is smoother than the original series because each point averages a
+full year of monthly values. The month-to-month jumps and regular summer peaks
+become less visible, while the underlying growth remains clear.
+
+## 5.9 A forecasting experiment
+
+I chose `AirPassengers`.
+
+```{r}
+# Uncomment if needed:
+# install.packages("forecast")
+
+library(forecast)
+
+x <- AirPassengers
+
+fc_naive <- naive(x, h = 12)
+plot(fc_naive, main = "Naive forecast")
+```
+
+```{r}
+fc_rw <- rwf(x, h = 12)
+fc_snaive <- snaive(x, h = 12)
+
+plot(fc_rw, main = "Random walk forecast")
+plot(fc_snaive, main = "Seasonal naive forecast")
+```
+
+The naive forecast assumes every future value equals the last observed value.
+For `AirPassengers`, that flat forecast is weak because the series has a strong
+monthly pattern and a rising level. `rwf()` gives the same basic random-walk
+idea here. `snaive()` fits this dataset best among the three because it repeats
+last year's monthly pattern, which matches the visible seasonality.
+
+## 5.10 Search and play with custom time series dataset
+
+I chose `airline-passengers.csv` from `jbrownlee/Datasets`.
+
+```{r}
+url <- "https://raw.githubusercontent.com/jbrownlee/Datasets/master/airline-passengers.csv"
+custom_df <- tryCatch(
+  read.csv(url),
+  error = function(e) {
+    message("Could not read the GitHub URL; using an offline copy from AirPassengers.")
+    data.frame(
+      Month = format(
+        seq(as.Date("1949-01-01"), by = "month", length.out = length(AirPassengers)),
+        "%Y-%m"
+      ),
+      Passengers = as.numeric(AirPassengers)
+    )
+  }
+)
+head(custom_df)
+str(custom_df)
+```
+
+```{r}
+plot(custom_df[[2]],
+     type = "l",
+     col = "steelblue",
+     main = "Custom dataset from jbrownlee/Datasets",
+     xlab = "Observation index",
+     ylab = names(custom_df)[2])
+```
+
+```{r}
+custom_ts <- ts(custom_df[[2]], start = c(1949, 1), frequency = 12)
+custom_ts
+
+plot(custom_ts,
+     col = "steelblue",
+     main = "Airline passengers as a ts object",
+     xlab = "Year",
+     ylab = "Passengers")
+```
+
+The file measures monthly airline passenger counts. The first column stores
+months, so frequency 12 makes sense for the `ts` conversion. The series rises
+from 1949 to 1960 and repeats the same yearly peaks. The seasonal swings grow
+larger as passenger numbers increase.
+
+## 5.11 Student choice mini-investigation
+
+I chose `JohnsonJohnson`.
+
+```{r}
+x <- JohnsonJohnson
+
+class(x)
+start(x)
+end(x)
+frequency(x)
+summary(x)
+plot(x, col = "steelblue", main = deparse(substitute(x)))
+```
+
+Dataset: `JohnsonJohnson`. It measures quarterly earnings per Johnson &
+Johnson share from 1960 Q1 to 1980 Q4. The object class is `ts`, and frequency
+4 means four observations per year. The series climbs over time, with small
+values in the 1960s and much higher values by the late 1970s. It also shows a
+repeated quarterly pattern. Variability grows as the level rises, so later
+swings look larger than early swings. I do not see one isolated outlier, but
+the last years move sharply. The series looks suitable for forecasting if the
+model handles trend, quarterly seasonality, and changing variance.
+
+## 5.12 Compare several time series from different sources
+
+I chose `JohnsonJohnson` from base R, `gtemp_both_ts` from
+`timeSeriesDataSets`, and the airline passenger CSV converted to `custom_ts`.
+
+```{r}
+if (requireNamespace("timeSeriesDataSets", quietly = TRUE)) {
+  library(timeSeriesDataSets)
+  data("gtemp_both_ts", package = "timeSeriesDataSets")
+} else {
+  message("Install 'timeSeriesDataSets' to use gtemp_both_ts.")
+}
+
+if (!exists("custom_ts")) {
+  custom_ts <- ts(as.numeric(AirPassengers), start = c(1949, 1), frequency = 12)
+}
+
+par(mfrow = c(3, 1))
+plot(JohnsonJohnson, col = "steelblue", main = "JohnsonJohnson")
+if (exists("gtemp_both_ts")) {
+  plot(gtemp_both_ts, col = "firebrick", main = "gtemp_both_ts")
+}
+plot(custom_ts, col = "darkorange", main = "airline-passengers.csv")
+par(mfrow = c(1, 1))
+```
+
+| Series | Source | What it measures | Frequency | Most visible feature |
+|---------------|---------------|---------------|---------------|---------------|
+| `JohnsonJohnson` | base R | Quarterly earnings per Johnson & Johnson share | Quarterly | Upward trend with quarterly movement and larger late swings |
+| `gtemp_both_ts` | `timeSeriesDataSets` | Global mean land and open ocean temperature deviations | Yearly | Long rise, strongest near the end |
+| `custom_ts` | GitHub CSV | Monthly airline passenger counts | Monthly | Strong upward trend with repeated yearly peaks |
+
+`gtemp_both_ts` shows the clearest long-run trend because the rise dominates the
+plot. `custom_ts` shows the clearest seasonality, with peaks returning each
+year. `JohnsonJohnson` looks hardest to forecast by eye because it combines
+trend, quarterly movement, and widening swings.
+
+## Final questions
+
+### What distinguishes a time series from an ordinary unordered dataset?
+
+A time series records observations in a meaningful time order. In an unordered
+dataset, row order usually carries no signal. In a time series, row order is
+part of the information.
+
+### Why does temporal ordering matter?
+
+Temporal ordering matters because each observation can depend on earlier
+observations. The order reveals trend, seasonality, cycles, shocks, and
+autocorrelation. Shuffling the same values can erase those patterns.
+
+### What is the difference between a numeric vector, a data frame with a time column, and a `ts` object?
+
+A numeric vector stores values only. A data frame with a time column stores
+values and explicit dates, which makes it flexible for irregular data or
+multiple variables. A `ts` object stores values with a start time and frequency,
+so R can treat the data as a regular time series.
+
+### What are some usual objectives of time series analysis?
+
+Common goals include describing trend and seasonality, measuring dependence
+between observations, forecasting future values, and spotting unusual changes.
+Time series analysis can also compare series across groups or study how shocks
+move through time.
+
+### Why can two datasets contain the same values but still convey very different information when ordered differently?
+
+The same values can tell a different story when their positions change. A rising
+sequence suggests growth, while the same values in random order look unstable
+and patternless. Order controls the visible trend, seasonal structure, and
+autocorrelation.

@@ -6,6 +6,7 @@
 /Esercizi/Data_Visualization/Data_Storytelling_files
 /Esercizi/Data_Visualization/figure
 /Esercizi/RISC-V_Workshop/obj_dir-*
+/Esercizi/Time_Series/05-1-discover-datasets_files
 
 # .DS_Store
 .DS_Store
@@ -15,3 +16,5 @@
 /Esercizi/Data_Visualization/*.html
 /Esercizi/Data_Visualization/*.png
 /Esercizi/Data_Visualization/*.pdf
+/Esercizi/Time_Series/*.html
+/Esercizi/Time_Series/*.pdf
